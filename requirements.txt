@@ -9,5 +9,4 @@ scikit-learn
 imbalanced-learn
 plotly
 streamlit
-altair<5
-imghdr
+altair

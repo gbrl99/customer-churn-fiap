@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import numpy as np
+from sklearn.linear_model import LogisticRegression
 
 
 # ---------------------------------------------------------
@@ -203,3 +205,111 @@ if not df.empty:
         
         # Pequena caixa de insights dinâmicos
         st.info(f"💡 **Dica de Avaliação:** Observe no gráfico acima como a proporção da classe majoritária afeta a distribuição de '{variavel_selecionada}'.")
+
+
+        # ---------------------------------------------------------
+# SEÇÃO 3: ANÁLISES PROFUNDAS E MODELAGEM INTERATIVA
+# ---------------------------------------------------------
+st.markdown("<br><br>", unsafe_allow_html=True)
+st.divider()
+
+st.markdown('<h2 class="section-title">Análises Profundas e Preditores</h2>', unsafe_allow_html=True)
+
+if not df.empty:
+    st.markdown("""
+    Nesta etapa, preparamos os dados para modelos matemáticos e estatísticos. 
+    
+    **Transformações realizadas:**
+    1. 🗑️ **Remoção de Colunas:** Removemos as variáveis `RowNumber`, `CustomerId` e `Surname`, pois representam apenas identificadores e nomes, não tendo relevância analítica para a decisão de evasão do cliente.
+    2. 🔢 **Dummização (One-Hot Encoding):** Transformamos as variáveis categóricas (como Geografia, Gênero, Tipo de Cartão) em variáveis binárias (0 ou 1) para que os algoritmos consigam interpretá-las matematicamente.
+    """)
+    
+    # Processamento de dados: Remoção e Dummização
+    colunas_remover = ['RowNumber', 'CustomerId', 'Surname']
+    df_clean = df.drop(columns=[col for col in colunas_remover if col in df.columns], errors='ignore')
+    
+    # Criando as variáveis dummy (drop_first=True ajuda a evitar multicolinearidade)
+    df_model = pd.get_dummies(df_clean, drop_first=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # --- MATRIZ DE CORRELAÇÃO ---
+    st.markdown("### 🗺️ Matriz de Correlação (Heatmap)")
+    st.write("Verifique a relação linear entre todas as variáveis do dataset pré-processado. Tons mais quentes (laranja) indicam correlação positiva, e tons mais frios (azul) indicam correlação negativa.")
+    
+    corr_matrix = df_model.corr()
+    
+    # Usando Plotly Express para gerar o Heatmap
+    fig_corr = px.imshow(
+        corr_matrix, 
+        text_auto=".2f", 
+        aspect="auto",
+        color_continuous_scale=["#005CA9", "#FFFFFF", "#F39200"], # Cores da identidade visual
+        title="Matriz de Correlação"
+    )
+    fig_corr.update_layout(height=700)
+    st.plotly_chart(fig_corr, use_container_width=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # --- REGRESSÃO LOGÍSTICA INTERATIVA ---
+    st.markdown("### 🧮 Simulador: Regressão Logística (Odds Ratio)")
+    st.write("""
+    A Regressão Logística nos permite entender o **peso (Coeficiente)** de cada variável na decisão de Churn e a **Razão de Chance (Odds Ratio)**. 
+    
+    * **Odds Ratio > 1:** Aumenta a chance de o cliente evadir (Churn).
+    * **Odds Ratio < 1:** Reduz a chance de o cliente evadir (fator de retenção).
+    
+    Experimente adicionar ou remover variáveis abaixo para ver como o modelo reage dinamicamente:
+    """)
+    
+    # Separando a variável alvo
+    if 'Exited' in df_model.columns:
+        X = df_model.drop(columns=['Exited'])
+        y = df_model['Exited']
+        
+        # Multiselect para o usuário escolher as variáveis (Padrão: Todas)
+        todas_variaveis = list(X.columns)
+        variaveis_selecionadas = st.multiselect(
+            "Selecione as variáveis para treinar a Regressão Logística:",
+            options=todas_variaveis,
+            default=todas_variaveis
+        )
+        
+        if variaveis_selecionadas:
+            # Filtrando o dataframe com as escolhas do usuário
+            X_filtrado = X[variaveis_selecionadas]
+            
+            # Treinando a regressão logística dinamicamente
+            lr = LogisticRegression(max_iter=2000, random_state=42)
+            # Obs: Como não estamos fazendo avaliação de acurácia aqui, treinamos com todo o df_model para análise exploratória dos coeficientes
+            lr.fit(X_filtrado, y)
+            
+            # Extraindo Coeficientes e calculando o Odds Ratio
+            coeficientes = lr.coef_[0]
+            odds_ratios = np.exp(coeficientes)
+            
+            # Criando um DataFrame de resultados
+            df_resultados_lr = pd.DataFrame({
+                'Variável': variaveis_selecionadas,
+                'Coeficiente': coeficientes,
+                'Odds Ratio': odds_ratios
+            })
+            
+            # Ordenando pelo valor do Odds Ratio (maior impacto primeiro)
+            df_resultados_lr = df_resultados_lr.sort_values(by='Odds Ratio', ascending=False).reset_index(drop=True)
+            
+            # Exibindo os resultados de forma visualmente agradável
+            st.dataframe(
+                df_resultados_lr.style.format({
+                    'Coeficiente': '{:.4f}',
+                    'Odds Ratio': '{:.4f}'
+                }).background_gradient(subset=['Odds Ratio'], cmap='Oranges'), 
+                use_container_width=True
+            )
+            
+            st.info("💡 **Dica:** Remova atributos fortemente correlacionados entre si (vistos na matriz acima) para avaliar como os coeficientes se estabilizam, evitando o efeito de multicolinearidade.")
+        else:
+            st.warning("Selecione pelo menos uma variável para visualizar os resultados da regressão.")
+    else:
+        st.error("A coluna alvo 'Exited' não foi encontrada no dataset.")

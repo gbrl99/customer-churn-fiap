@@ -3,6 +3,13 @@ import pandas as pd
 import plotly.express as px
 import numpy as np
 from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier, AdaBoostClassifier
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.svm import SVC
+from sklearn.metrics import confusion_matrix, classification_report
 
 
 # ---------------------------------------------------------
@@ -51,7 +58,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # CABEÇALHO DO APLICATIVO
-st.markdown('<div class="main-header"><h1>📊 Projeto de Machine Learning: Previsão de Churn Bancário</h1></div>', unsafe_allow_html=True)
+st.markdown('<div class="main-header"><h1>📊 Previsão de Churn Bancário</h1></div>', unsafe_allow_html=True)
 
 
 # ---------------------------------------------------------
@@ -60,7 +67,7 @@ st.markdown('<div class="main-header"><h1>📊 Projeto de Machine Learning: Prev
 st.markdown('<h2 class="section-title">Cenário do Problema</h2>', unsafe_allow_html=True)
 
 st.markdown("""
-Bem-vindo(a) à plataforma interativa do nosso projeto! O objetivo desta prova de conceito (PoC) baseada em dados é conectar os conceitos de **Machine Learning** a um problema real do ambiente bancário, identificando gaps na operação e atuando de forma inteligente.
+A evasão de clientes, conhecida como churn, representa um desafio crítico para a instituição bancária. A perda de um consumidor acarreta impactos diretos, como a diminuição imediata do lucro e a perda de valiosas oportunidades de vendas cruzadas (cross-sell) de novos produtos. Além disso, como o custo para adquirir novos clientes no setor financeiro é historicamente elevado, perder um cliente cujo custo de aquisição já foi pago gera um desperdício financeiro significativo para a operação.
 """)
 
 # Divisão em duas colunas para melhorar o design visual
@@ -91,15 +98,13 @@ with col2:
 st.markdown('<div class="card">', unsafe_allow_html=True)
 st.markdown("### 💡 A Solução Proposta")
 st.markdown("""
-Desenvolvemos uma solução preditiva de **Classificação** para antecipar a probabilidade de um cliente evadir (churn), permitindo que a instituição aja de maneira **preventiva** e assertiva. 
+Desenvolvemos uma solução preditiva de Classificação para antecipar a probabilidade de um cliente evadir (churn), permitindo que a instituição aja de maneira preventiva e assertiva.
 
-* **O que o modelo tenta prever?** Se o cliente irá sair do banco (`1`) ou permanecer (`0`).
-* **Variável Alvo:** A coluna ``Exited``.
+O que o modelo tenta prever? Se o cliente irá sair do banco (1) ou permanecer (0).
 
-<br>
+Variável Alvo: A coluna ``Exited``.
 
-**Aprofundamento Técnico:** Para lidar com a natureza do negócio, onde os dados apresentam uma proporção de churn de **80/20** (desbalanceamento histórico), nossa etapa de preparação introduziu o método **SMOTE** para balancear as classes de maneira sintética, e o **Standard Scaler** para garantir a padronização das features. Essa estrutura garante que o modelo aprenda os padrões reais sem ser enviesado pela classe majoritária.
-""", unsafe_allow_html=True)
+Aprofundamento Técnico: Para lidar com a natureza do negócio, onde os dados apresentam uma proporção de churn de 80/20 (desbalanceamento histórico), optamos por utilizar a técnica de class-weight (pesos de classe) diretamente na etapa de modelagem, associada ao Standard Scaler na preparação para garantir a padronização das features. Essa estrutura assegura que o algoritmo penalize com maior rigor os erros na predição da classe minoritária, aprendendo os padrões reais de evasão sem ser enviesado pela classe majoritária.""", unsafe_allow_html=True)
 st.markdown('</div>', unsafe_allow_html=True)
 
 # DETALHES DO DATASET (Utilizando um expander para não poluir a tela inicial)
@@ -311,5 +316,140 @@ if not df.empty:
             st.info("💡 **Dica:** Remova atributos fortemente correlacionados entre si (vistos na matriz acima) para avaliar como os coeficientes se estabilizam, evitando o efeito de multicolinearidade.")
         else:
             st.warning("Selecione pelo menos uma variável para visualizar os resultados da regressão.")
+    else:
+        st.error("A coluna alvo 'Exited' não foi encontrada no dataset.")
+
+
+
+# --- MODELAGEM E PREDIÇÃO INTERATIVA ---
+    st.markdown("### 🤖 Laboratório de Modelos de Machine Learning")
+    st.write("""
+    Nesta etapa, você pode testar o desempenho de quatro algoritmos diferentes na previsão de Churn. 
+    Para garantir uma avaliação justa e correta:
+    * **Divisão dos Dados:** Aplicamos um `train_test_split` com 80% dos dados para treino e 20% para teste.
+    * **Padronização:** Todos os dados passam pelo `StandardScaler` para ficarem na mesma escala.
+    * **Desbalanceamento:** O parâmetro `class_weight='balanced'` é aplicado para penalizar rigorosamente os erros na classe minoritária (Churn).
+    """)
+    
+    # Separando a variável alvo
+    if 'Exited' in df_model.columns:
+        X = df_model.drop(columns=['Exited'])
+        y = df_model['Exited']
+        
+        # 1. Seleção de Variáveis
+        todas_variaveis = list(X.columns)
+        st.markdown("#### 1. Seleção de Variáveis (Features)")
+        variaveis_selecionadas = st.multiselect(
+            "Adicione ou remova as variáveis que o modelo irá utilizar para prever o Churn:",
+            options=todas_variaveis,
+            default=todas_variaveis
+        )
+        
+        # 2. Seleção do Modelo Preditivo
+        st.markdown("#### 2. Seleção do Algoritmo")
+        col_mod1, col_mod2 = st.columns([1, 2])
+        
+        with col_mod1:
+            modelo_escolhido = st.radio(
+                "Escolha o modelo para treinar:",
+                ("Regressão Logística", "Random Forest", "AdaBoost", "SVM (SVC)")
+            )
+            
+        with col_mod2:
+            st.write("**Melhores hiperparâmetros aplicados (Encontrados via Tuning):**")
+            # Configurando os modelos com os melhores parâmetros
+            if modelo_escolhido == "Regressão Logística":
+                st.info("`C: 0.1767` | `penalty: 'l2'` | `solver: 'sag'` | `class_weight: 'balanced'`")
+                modelo = LogisticRegression(C=0.1767016940294795, penalty='l2', solver='sag', class_weight='balanced', max_iter=2000, random_state=42)
+                
+            elif modelo_escolhido == "Random Forest":
+                st.info("`n_estimators: 161` | `max_depth: 75` | `max_features: 'sqrt'` | `min_samples_split: 41` | `min_samples_leaf: 4` | `bootstrap: True` | `class_weight: 'balanced'`")
+                modelo = RandomForestClassifier(n_estimators=161, max_depth=75, max_features='sqrt', min_samples_split=41, min_samples_leaf=4, bootstrap=True, class_weight='balanced', random_state=42)
+                
+            elif modelo_escolhido == "AdaBoost":
+                st.info("`n_estimators: 600` | `learning_rate: 0.3` | `class_weight: 'balanced' (via classificador base)`")
+                # AdaBoost não tem class_weight nativo, então passamos uma árvore base balanceada
+                arvore_base = DecisionTreeClassifier(max_depth=1, class_weight='balanced', random_state=42)
+                try:
+                    modelo = AdaBoostClassifier(estimator=arvore_base, n_estimators=600, learning_rate=0.3, random_state=42)
+                except TypeError:
+                    # Fallback para versões mais antigas do scikit-learn
+                    modelo = AdaBoostClassifier(base_estimator=arvore_base, n_estimators=600, learning_rate=0.3, random_state=42)
+                    
+            elif modelo_escolhido == "SVM (SVC)":
+                st.info("`C: 0.1767` | `kernel: 'rbf'` | `gamma: 'scale'` | `class_weight: 'balanced'`")
+                modelo = SVC(C=0.1767016940294795, kernel='rbf', gamma='scale', class_weight='balanced', random_state=42)
+
+        # 3. Treinamento e Avaliação
+        if variaveis_selecionadas:
+            with st.spinner(f"Treinando o modelo {modelo_escolhido}..."):
+                # Filtrando os dados
+                X_filtrado = X[variaveis_selecionadas]
+                
+                # Train/Test Split (80/20) com estratificação para manter a proporção da classe alvo
+                X_train, X_test, y_train, y_test = train_test_split(X_filtrado, y, test_size=0.20, random_state=42, stratify=y)
+                
+                # Standard Scaler
+                scaler = StandardScaler()
+                X_train_scaled = scaler.fit_transform(X_train)
+                X_test_scaled = scaler.transform(X_test)
+                
+                # Treinamento do Modelo
+                modelo.fit(X_train_scaled, y_train)
+                
+                # Previsões
+                y_pred = modelo.predict(X_test_scaled)
+                
+                st.markdown("<br>", unsafe_allow_html=True)
+                st.markdown("#### 3. Resultados e Métricas (Dados de Teste - 20%)")
+                
+                col_res1, col_res2 = st.columns(2)
+                
+                # Matriz de Confusão
+                with col_res1:
+                    st.write("**Matriz de Confusão**")
+                    cm = confusion_matrix(y_test, y_pred)
+                    
+                    # Usando Plotly para uma matriz bonita e com as cores da identidade
+                    fig_cm = px.imshow(
+                        cm, 
+                        text_auto=True, 
+                        color_continuous_scale=["#FFFFFF", "#005CA9", "#F39200"], 
+                        labels=dict(x="Previsão do Modelo", y="Realidade (Cliente)", color="Qtd"),
+                        x=['Permaneceu (0)', 'Evadiu (1)'],
+                        y=['Permaneceu (0)', 'Evadiu (1)']
+                    )
+                    
+                    fig_cm.update_layout(margin=dict(l=20, r=20, t=20, b=20), height=350)
+                    st.plotly_chart(fig_cm, use_container_width=True)
+                    
+                    st.caption("Eixo X: O que o modelo previu | Eixo Y: O que realmente aconteceu")
+                
+                # Relatório de Classificação
+                with col_res2:
+                    st.write("**Métricas de Avaliação (Classification Report)**")
+                    
+                    # Gerando o dicionário do classification report e convertendo para dataframe
+                    report = classification_report(y_test, y_pred, output_dict=True, target_names=['Permaneceu (0)', 'Evadiu (1)'])
+                    df_metrics = pd.DataFrame(report).transpose()
+                    
+                    # Removendo a acurácia global da tabela para focar no F1 das classes
+                    df_metrics = df_metrics.drop('accuracy', errors='ignore')
+                    
+                    # Formatando o DataFrame
+                    st.dataframe(
+                        df_metrics.style.format("{:.3f}").background_gradient(cmap='Blues'),
+                        use_container_width=True,
+                        height=280
+                    )
+                    
+                    st.markdown("""
+                    **Interpretando as Métricas:**
+                    * **Precision (Precisão):** Dos que o modelo previu que dariam Churn, quantos realmente deram?
+                    * **Recall (Revocação):** De todos os clientes que *realmente* deram Churn, quantos o modelo conseguiu encontrar?
+                    * **F1-Score:** O equilíbrio entre Precisão e Recall. É a métrica principal para o nosso problema desbalanceado!
+                    """)
+        else:
+            st.warning("Selecione pelo menos uma variável para treinar o modelo.")
     else:
         st.error("A coluna alvo 'Exited' não foi encontrada no dataset.")

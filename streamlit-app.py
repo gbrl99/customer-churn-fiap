@@ -361,8 +361,6 @@ if not df.empty:
         st.markdown("**Engajamento e Cartões**")
         # Transformando opções binárias em algo visualmente mais amigável
         input_cliente['HasCrCard'] = 1 if st.selectbox("Possui Cartão de Crédito?", ["Sim", "Não"]) == "Sim" else 0
-        input_cliente['IsActiveMember'] = 1 if st.selectbox("É Membro Ativo?", ["Sim", "Não"]) == "Sim" else 0
-        input_cliente['Complain'] = 1 if st.selectbox("Possui Reclamação?", ["Sim", "Não"]) == "Sim" else 0
         
         if 'Card Type' in df.columns:
             input_cliente['Card Type'] = st.selectbox("Tipo de Cartão:", df['Card Type'].dropna().unique())
@@ -389,24 +387,44 @@ if not df.empty:
     # ---------------------------------------------------------
     # LÓGICA DE PREDIÇÃO INDIVIDUAL (Acionada pelo botão)
     # ---------------------------------------------------------
+    # ---------------------------------------------------------
+    # LÓGICA DE PREDIÇÃO INDIVIDUAL (Acionada pelo botão)
+    # ---------------------------------------------------------
+# ---------------------------------------------------------
+    # LÓGICA DE PREDIÇÃO INDIVIDUAL (Acionada pelo botão)
+    # ---------------------------------------------------------
     if btn_predict_individual:
         with st.spinner("Analisando o perfil do cliente..."):
             
             # 1. Transformar o input do usuário em um DataFrame de 1 linha
             df_input = pd.DataFrame([input_cliente])
             
-            # 2. Preparar a base de treino completa (excluindo colunas irrelevantes)
-            df_train = df.drop(columns=[col for col in colunas_ignoradas if col in df.columns], errors='ignore')
-            y_train_full = df['Exited']
+            # 2. Preparar a base de treino completa
+            colunas_ignoradas_treino = ['RowNumber', 'CustomerId', 'Surname', 'Exited', 'Complain', 'IsActiveMember']
+            df_train = df.drop(columns=[col for col in colunas_ignoradas_treino if col in df.columns], errors='ignore')
             
-            # 3. Dummização combinada (Para garantir que a linha do cliente tenha as mesmas colunas do treino)
-            # Concatenamos temporariamente para o get_dummies criar as mesmas colunas e depois separamos
+            # Extrair o 'y' como Array do Numpy (.values)
+            y_train_full = df['Exited'].values 
+            
+            # Garantir que a ordem das colunas do input seja IDÊNTICA à base de treino
+            df_input = df_input.reindex(columns=df_train.columns)
+            
+            # 3. Dummização combinada (Para garantir a criação correta das colunas)
             df_combined = pd.concat([df_train, df_input], ignore_index=True)
-            df_combined_dummies = pd.get_dummies(df_combined, drop_first=True)
             
-            # Separando novamente
-            X_train_full = df_combined_dummies.iloc[:-1] # Tudo, exceto a última linha
-            X_single_client = df_combined_dummies.iloc[[-1]] # Apenas a última linha (o cliente)
+            # Dummização (dtype=float evita erros booleanos)
+            df_combined_dummies = pd.get_dummies(df_combined, drop_first=True, dtype=float)
+            
+            # ========================================================
+            # FIX PRINCIPAL: TRATAMENTO DE VALORES NULOS (NaN)
+            # ========================================================
+            # Preenchemos todos os possíveis valores nulos gerados na base original 
+            # ou pelo reindex com 0. Isso impede a quebra do Logist, SVM e AdaBoost.
+            df_combined_dummies = df_combined_dummies.fillna(0)
+            
+            # Separando novamente convertendo para matrizes puras do numpy (.values)
+            X_train_full = df_combined_dummies.iloc[:-1].values 
+            X_single_client = df_combined_dummies.iloc[[-1]].values
             
             # 4. Standard Scaler
             scaler_single = StandardScaler()
@@ -425,18 +443,17 @@ if not df.empty:
                 except TypeError:
                     modelo_single = AdaBoostClassifier(base_estimator=arvore_base, n_estimators=600, learning_rate=0.3, random_state=42)
             elif modelo_single_escolhido == "SVM (SVC)":
-                # Nota: Para o SVM retornar probabilidade, probability=True é obrigatório
                 modelo_single = SVC(C=0.1767016940294795, kernel='rbf', gamma='scale', class_weight='balanced', probability=True, random_state=42)
                 
-            # Treinando o modelo com a base toda
+            # Treinando o modelo com a base toda agora blindada e sem nulos
             modelo_single.fit(X_train_full_scaled, y_train_full)
             
             # 6. Realizar a Predição e extrair a Probabilidade
             predicao_classe = modelo_single.predict(X_single_client_scaled)[0]
             probabilidade = modelo_single.predict_proba(X_single_client_scaled)[0]
             
-            prob_churn = probabilidade[1] * 100 # Probabilidade da classe 1 (Evadiu)
-            prob_ficar = probabilidade[0] * 100 # Probabilidade da classe 0 (Permaneceu)
+            prob_churn = probabilidade[1] * 100 
+            prob_ficar = probabilidade[0] * 100 
             
             # 7. Exibição dos Resultados
             st.markdown("<br>", unsafe_allow_html=True)
@@ -453,7 +470,7 @@ if not df.empty:
             with col_res_B:
                 st.metric(label="Probabilidade de Churn (Sair)", value=f"{prob_churn:.2f}%")
                 
-            # Barra de progresso visual para a probabilidade
+            # Barra de progresso visual
             st.write("**Risco Relativo de Evasão:**")
             st.progress(int(prob_churn))
 

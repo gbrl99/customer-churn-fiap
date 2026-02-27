@@ -1,221 +1,205 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-import joblib
 import plotly.express as px
-import plotly.graph_objects as go
-from sklearn.metrics import confusion_matrix, classification_report
 
-# ==========================================
-# CONFIGURAÇÃO E IDENTIDADE VISUAL (CAIXA)
-# ==========================================
-st.set_page_config(page_title="PoC Churn Bancário - Caixa", layout="wide")
 
-COR_AZUL = "#005CA9"
-COR_LARANJA = "#F39200"
+# ---------------------------------------------------------
+# CONFIGURAÇÃO INICIAL E IDENTIDADE VISUAL
+# ---------------------------------------------------------
+st.set_page_config(page_title="Projeto IA - Previsão de Churn", layout="wide")
 
-st.markdown(f"""
+# CSS customizado para identidade visual (Inspirado na Caixa Econômica Federal)
+st.markdown("""
     <style>
-    [data-testid="stSidebar"] {{ background-color: {COR_AZUL}; }}
-    [data-testid="stSidebar"] * {{ color: white !important; }}
-    h1, h2, h3 {{ color: {COR_AZUL} !important; }}
-    .stMetric {{ background-color: #f0f2f6; padding: 10px; border-radius: 10px; border-left: 5px solid {COR_LARANJA}; }}
+    /* Paleta de Cores: Azul Escuro (#005CA9), Laranja (#F39200), Azul Claro (#00A3E0) */
+    
+    .main-header {
+        background-color: #005CA9;
+        color: #FFFFFF;
+        padding: 20px;
+        border-bottom: 5px solid #F39200;
+        text-align: center;
+        border-radius: 8px;
+        margin-bottom: 30px;
+    }
+    
+    .section-title {
+        color: #F39200;
+        border-bottom: 2px solid #00A3E0;
+        padding-bottom: 5px;
+        margin-top: 30px;
+        margin-bottom: 20px;
+        font-family: 'Arial', sans-serif;
+    }
+    
+    .card {
+        background-color: #f8f9fa;
+        padding: 20px;
+        border-radius: 10px;
+        border-left: 5px solid #00A3E0;
+        margin-bottom: 20px;
+        box-shadow: 2px 2px 5px rgba(0,0,0,0.05);
+    }
+    
+    .highlight-text {
+        color: #005CA9;
+        font-weight: bold;
+    }
     </style>
 """, unsafe_allow_html=True)
 
-# ==========================================
-# FUNÇÕES DE CARREGAMENTO
-# ==========================================
+# CABEÇALHO DO APLICATIVO
+st.markdown('<div class="main-header"><h1>📊 Projeto de Machine Learning: Previsão de Churn Bancário</h1></div>', unsafe_allow_html=True)
+
+
+# ---------------------------------------------------------
+# SEÇÃO 1: CENÁRIO DO PROBLEMA
+# ---------------------------------------------------------
+st.markdown('<h2 class="section-title">Cenário do Problema</h2>', unsafe_allow_html=True)
+
+st.markdown("""
+Bem-vindo(a) à plataforma interativa do nosso projeto! O objetivo desta prova de conceito (PoC) baseada em dados é conectar os conceitos de **Machine Learning** a um problema real do ambiente bancário, identificando gaps na operação e atuando de forma inteligente.
+""")
+
+# Divisão em duas colunas para melhorar o design visual
+col1, col2 = st.columns(2)
+
+with col1:
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.markdown("### 📉 Qual é o problema?")
+    st.markdown("""
+    A **perda de clientes (churn)** é um desafio constante que impacta diretamente os resultados da instituição em diversas frentes:
+    * Elevado custo na aquisição de novos clientes para repor a base.
+    * Queda nas oportunidades de venda de produtos bancários (cross-sell).
+    * Redução geral na rentabilidade e no lucro.
+    """)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+with col2:
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.markdown("### 🛑 Onde está o gap atual?")
+    st.markdown("""
+    O processo atual de retenção sofre com lentidão e ineficiência devido a fatores como:
+    * **Ações Reativas:** Tentativas de retenção ocorrem apenas quando o cliente já decidiu sair.
+    * **Falta de Priorização:** Campanhas massivas disparam para toda a base, gerando grande desperdício de recursos.
+    * **Subjetividade:** Falta de uma estratégia unificada, deixando as decisões reféns do julgamento individual de cada agência.
+    """)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+st.markdown('<div class="card">', unsafe_allow_html=True)
+st.markdown("### 💡 A Solução Proposta")
+st.markdown("""
+Desenvolvemos uma solução preditiva de **Classificação** para antecipar a probabilidade de um cliente evadir (churn), permitindo que a instituição aja de maneira **preventiva** e assertiva. 
+
+* **O que o modelo tenta prever?** Se o cliente irá sair do banco (`1`) ou permanecer (`0`).
+* **Variável Alvo:** A coluna ``Exited``.
+
+<br>
+
+**Aprofundamento Técnico:** Para lidar com a natureza do negócio, onde os dados apresentam uma proporção de churn de **80/20** (desbalanceamento histórico), nossa etapa de preparação introduziu o método **SMOTE** para balancear as classes de maneira sintética, e o **Standard Scaler** para garantir a padronização das features. Essa estrutura garante que o modelo aprenda os padrões reais sem ser enviesado pela classe majoritária.
+""", unsafe_allow_html=True)
+st.markdown('</div>', unsafe_allow_html=True)
+
+# DETALHES DO DATASET (Utilizando um expander para não poluir a tela inicial)
+with st.expander("🔍 Explorar as Variáveis do Dataset", expanded=False):
+    st.markdown("""
+    Os dados baseiam-se em um histórico de clientes (10.000 registros e 18 colunas), carregados através do repositório `artefatos/customer-churn-predict.csv`. 
+    
+    Abaixo estão as características mapeadas para compreender o comportamento do consumidor:
+    
+    * **CreditScore:** Pontuação de crédito. Clientes com maior pontuação tendem a permanecer no banco.
+    * **Geography:** Localização geográfica do cliente.
+    * **Gender:** Gênero.
+    * **Age:** Idade. Fator relevante, clientes mais velhos demonstram maior fidelidade.
+    * **Tenure:** Anos de relacionamento com a instituição.
+    * **Balance:** Saldo em conta. Contas com maiores saldos apresentam menor risco de evasão.
+    * **NumOfProducts:** Quantidade de produtos contratados pelo cliente.
+    * **HasCrCard:** Posse de cartão de crédito (1=Sim, 0=Não).
+    * **IsActiveMember:** Indica se o cliente tem forte movimentação na conta.
+    * **EstimatedSalary:** Salário estimado.
+    * **Complain:** Indica se o cliente registrou reclamações recentemente.
+    * **Satisfaction Score:** Nota atribuída pelo cliente sobre a resolução de problemas.
+    * **Card Type:** Categoria do cartão de crédito (Ex: Diamond, Gold).
+    * **Points Earned:** Pontuação acumulada por fidelidade.
+    * **Exited:** Variável que define o churn.
+    """)
+
+# ---------------------------------------------------------
+# SEÇÃO 2: ANÁLISE EXPLORATÓRIA DE DADOS
+# ---------------------------------------------------------
+st.markdown("<br><br>", unsafe_allow_html=True)
+st.divider()
+
+st.markdown('<h2 class="section-title">Análise Exploratória (EDA)</h2>', unsafe_allow_html=True)
+
+# 1. FUNÇÃO PARA LER O DATAFRAME (Usando cache para não recarregar toda hora)
 @st.cache_data
-def load_data():
-    return pd.read_csv("artefatos/customer-churn-predict.csv")
+def carregar_dados():
+    # Caminho do arquivo conforme a sua estrutura de repositório
+    try:
+        df = pd.read_csv("artefatos/Customer-Churn-Records.csv")
+        return df
+    except FileNotFoundError:
+        # Criando um dataframe de exemplo caso o arquivo não seja encontrado na hora de testar
+        st.error("Arquivo 'artefatos/Customer-Churn-Records.csv' não encontrado. Verifique o caminho.")
+        return pd.DataFrame()
 
-@st.cache_resource
-def load_model():
-    return joblib.load("artefatos/rf-model.pkl")
+df = carregar_dados()
 
-df = load_data()
-model = load_model()
-
-# ==========================================
-# MENU LATERAL
-# ==========================================
-st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/thumb/1/15/Caixa_Economica_Federal_logo.svg/2560px-Caixa_Economica_Federal_logo.svg.png", width=150)
-menu = st.sidebar.radio("Navegação", [
-    "📊 Dashboard e Desempenho", 
-    "💰 Impacto Financeiro (ROI)", 
-    "🤖 Simulador de Risco", 
-    "📋 Base de Clientes", 
-    "ℹ️ Sobre o Projeto"
-])
-
-# ==========================================
-# 1. DASHBOARD E DESEMPENHO
-# ==========================================
-if menu == "📊 Dashboard e Desempenho":
-    st.title("📊 Dashboard Analítico e Performance")
+if not df.empty:
+    # 2. MOSTRAR O DATAFRAME
+    st.markdown("### 🗂️ Visão Geral dos Dados")
+    st.write("Abaixo está uma amostra do dataset utilizado para treinar nosso modelo de Machine Learning:")
     
-    # KPIs de topo
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Clientes Analisados", len(df))
-    c2.metric("Taxa Churn Real", f"{(df['Exited'].mean()*100):.1f}%")
-    c3.metric("Taxa Churn Prevista", f"{(df['CHURN_PREDICT'].mean()*100):.1f}%")
-
-    # Gráficos de Negócio
-    st.markdown("---")
-    col_a, col_b = st.columns(2)
-    with col_a:
-        st.subheader("Idade vs Churn (Previsão)")
-        fig_age = px.histogram(df, x="Age", color="CHURN_PREDICT", barmode="group", color_discrete_map={0:COR_AZUL, 1:COR_LARANJA})
-        st.plotly_chart(fig_age, use_container_width=True)
-    with col_b:
-        st.subheader("Churn por Localização")
-        # Mapeando colunas dummy de volta para nomes para o gráfico
-        geo_cols = ['Geography_Germany', 'Geography_Spain']
-        df['Pais'] = 'França'
-        df.loc[df['Geography_Germany'] == 1, 'Pais'] = 'Alemanha'
-        df.loc[df['Geography_Spain'] == 1, 'Pais'] = 'Espanha'
-        fig_geo = px.sunburst(df, path=['Pais', 'CHURN_PREDICT'], color='CHURN_PREDICT', color_discrete_map={0:COR_AZUL, 1:COR_LARANJA})
-        st.plotly_chart(fig_geo, use_container_width=True)
-
-    # SEÇÃO DE DESEMPENHO DO MODELO (Exigência técnica)
-    st.markdown("---")
-    st.header("🎯 Qualidade Técnica do Modelo")
-    ct1, ct2 = st.columns([1, 1.5])
+    # Exibe o dataframe com um scroll interativo
+    st.dataframe(df.head(100), use_container_width=True)
     
-    with ct1:
-        st.write("**Matriz de Confusão (Validação)**")
-        cm = confusion_matrix(df['Exited'], df['CHURN_PREDICT'])
-        fig_cm = px.imshow(cm, text_auto=True, labels=dict(x="Previsto", y="Real"),
-                           x=['Ficou', 'Churn'], y=['Ficou', 'Churn'], color_continuous_scale='Blues')
-        st.plotly_chart(fig_cm, use_container_width=True)
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # 3. GRÁFICO DE COMPARAÇÃO (CHURN VS NÃO CHURN)
+    st.markdown("### 📊 Análise de Variáveis Categóricas e Binárias")
+    st.write("Selecione uma variável abaixo para entender como ela se relaciona com a evasão de clientes (Churn).")
+    
+    # Filtrando algumas colunas categóricas/binárias que fazem sentido analisar
+    colunas_categoricas = ['Gender', 'Geography', 'HasCrCard', 'IsActiveMember', 'Complain', 'Card Type', 'NumOfProducts']
+    
+    # Garante que as colunas existam no dataframe antes de listar
+    colunas_disponiveis = [col for col in colunas_categoricas if col in df.columns]
+    
+    if colunas_disponiveis:
+        # Widget para o usuário escolher a variável
+        variavel_selecionada = st.selectbox("Escolha a variável para comparar com o Churn:", colunas_disponiveis)
         
-    with ct2:
-        st.write("**Importância das Variáveis (Feature Importance)**")
-        # Simulando importância baseada na correlação para visualização rápida
-        importances = df.drop(['Exited', 'CHURN_PREDICT', 'CHURN_PROB', 'Pais'], axis=1).corrwith(df['Exited']).abs().sort_values(ascending=True)
-        fig_imp = px.bar(importances, orientation='h', color_discrete_sequence=[COR_LARANJA])
-        fig_imp.update_layout(showlegend=False, xaxis_title="Impacto no Modelo", yaxis_title="Variável")
-        st.plotly_chart(fig_imp, use_container_width=True)
-
-# ==========================================
-# 2. IMPACTO FINANCEIRO (ROI)
-# ==========================================
-elif menu == "💰 Impacto Financeiro (ROI)":
-    st.title("💰 Calculadora de ROI e Valor de Negócio")
-    st.write("Simule o impacto financeiro de utilizar o modelo de ML para campanhas de retenção direcionadas.")
-    
-    col_input, col_res = st.columns([1, 1.5])
-    
-    with col_input:
-        st.info("Parâmetros da Campanha")
-        custo_contato = st.slider("Custo por Cliente (Ação de Retenção)", 10, 500, 50)
-        valor_cliente = st.slider("Receita média salva por Cliente", 500, 5000, 1200)
-        taxa_sucesso = st.slider("Eficácia da Retenção (%)", 5, 50, 15) / 100
-
-    # Lógica de cálculo
-    n_total = len(df)
-    n_alvos = df['CHURN_PREDICT'].sum()
-    
-    # Sem ML (Campanha para todos)
-    custo_total_sem_ml = n_total * custo_contato
-    clientes_salvos_sem_ml = (df['Exited'].sum()) * taxa_sucesso
-    retorno_sem_ml = (clientes_salvos_sem_ml * valor_cliente) - custo_total_sem_ml
-    
-    # Com ML (Campanha focada)
-    custo_total_com_ml = n_alvos * custo_contato
-    clientes_salvos_com_ml = (df[(df['CHURN_PREDICT']==1) & (df['Exited']==1)].shape[0]) * taxa_sucesso
-    retorno_com_ml = (clientes_salvos_com_ml * valor_cliente) - custo_total_com_ml
-    
-    with col_res:
-        fig_roi = go.Figure(data=[
-            go.Bar(name='Campanha Geral (Sem ML)', x=['Retorno Financeiro'], y=[retorno_sem_ml], marker_color='gray'),
-            go.Bar(name='Campanha Focada (Com ML)', x=['Retorno Financeiro'], y=[retorno_com_ml], marker_color=COR_AZUL)
-        ])
-        fig_roi.update_layout(title="Comparativo de Geração de Valor")
-        st.plotly_chart(fig_roi, use_container_width=True)
+        # Agrupando os dados para contagem
+        df_agrupado = df.groupby([variavel_selecionada, 'Exited']).size().reset_index(name='Quantidade')
         
-        economia = custo_total_sem_ml - custo_total_com_ml
-        st.success(f"**Resultado:** Ao focar apenas nos clientes de risco, o banco economiza **€ {economia:,.2f}** em custos de marketing inúteis.")
-
-# ==========================================
-# 3. SIMULADOR DE RISCO (COM EXPLICABILIDADE)
-# ==========================================
-elif menu == "🤖 Simulador de Risco":
-    st.title("🤖 Simulador de Propensão em Tempo Real")
-    
-    with st.form("sim_form"):
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            age = st.slider("Idade", 18, 90, 35)
-            balance = st.number_input("Saldo Bancário (€)", 0.0, 250000.0, 50000.0)
-            products = st.selectbox("Produtos", [1, 2, 3, 4], index=0)
-        with c2:
-            score = st.slider("Score de Crédito", 300, 850, 600)
-            active = st.selectbox("Membro Ativo?", ["Sim", "Não"])
-            geo = st.selectbox("País", ["França", "Alemanha", "Espanha"])
-        with c3:
-            satisfaction = st.slider("Satisfação", 1, 5, 3)
-            salary = st.number_input("Salário Est.", 0.0, 200000.0, 45000.0)
-            gender = st.selectbox("Gênero", ["Masculino", "Feminino"])
+        # Renomeando as classes de Exited para ficar visualmente mais claro
+        df_agrupado['Status do Cliente'] = df_agrupado['Exited'].map({0: 'Permaneceu (0)', 1: 'Evadiu / Churn (1)'})
         
-        btn = st.form_submit_button("Avaliar Cliente")
-
-    if btn:
-        # Mock de processamento para o modelo
-        prob = (age/100 * 0.4) + (0.3 if products > 2 else 0.1) + (0.2 if geo == "Alemanha" else 0)
-        prob = min(prob * 100, 99.0) # Apenas ilustrativo para o simulador
+        # Criando o gráfico de barras agrupadas usando as cores da identidade visual
+        fig = px.bar(
+            df_agrupado,
+            x=variavel_selecionada,
+            y='Quantidade',
+            color='Status do Cliente',
+            barmode='group',
+            color_discrete_map={
+                'Permaneceu (0)': '#005CA9', # Azul Escuro
+                'Evadiu / Churn (1)': '#F39200' # Laranja
+            },
+            title=f"Comparação de Churn por {variavel_selecionada}",
+            labels={variavel_selecionada: variavel_selecionada, 'Quantidade': 'Número de Clientes'}
+        )
         
-        st.markdown("---")
-        res_col, exp_col = st.columns([1, 1])
+        # Melhorando o layout do gráfico
+        fig.update_layout(
+            plot_bgcolor='rgba(0,0,0,0)', 
+            paper_bgcolor='rgba(0,0,0,0)',
+            font=dict(color='#005CA9')
+        )
         
-        with res_col:
-            fig_gauge = go.Figure(go.Indicator(
-                mode="gauge+number", value=prob,
-                gauge={'axis': {'range': [0, 100]}, 'bar': {'color': COR_AZUL},
-                       'steps': [{'range': [0, 50], 'color': "green"}, {'range': [50, 80], 'color': "orange"}, {'range': [80, 100], 'color': "red"}]}))
-            st.plotly_chart(fig_gauge, use_container_width=True)
-            
-        with exp_col:
-            st.subheader("🔍 Por que este risco?")
-            if prob > 50:
-                st.warning("**Fatores Críticos Detectados:**")
-                if age > 45: st.write("- **Idade Elevada:** Historicamente, clientes acima de 45 anos nesta base tendem a evadir mais.")
-                if products == 1: st.write("- **Baixa Fidelização:** O uso de apenas 1 produto reduz o custo de saída para o cliente.")
-                if geo == "Alemanha": st.write("- **Fator Geográfico:** Clientes da Alemanha apresentam taxa de churn superior à média.")
-            else:
-                st.success("O cliente apresenta comportamento de estabilidade (perfil de retenção).")
-
-# ==========================================
-# 4. BASE DE CLIENTES
-# ==========================================
-elif menu == "📋 Base de Clientes":
-    st.title("📋 Lista de Priorização (Marketing)")
-    p_min = st.sidebar.slider("Probabilidade Mínima", 0.0, 1.0, 0.7)
-    filtro = df[df['CHURN_PROB'] >= p_min].sort_values("CHURN_PROB", ascending=False)
-    st.dataframe(filtro[['Age', 'Balance', 'Pais', 'CHURN_PROB', 'CHURN_PREDICT']], use_container_width=True)
-    st.download_button("Exportar Lista para CSV", filtro.to_csv(), "mailing_retencao.csv")
-
-# ==========================================
-# 5. SOBRE O PROJETO E RISCOS
-# ==========================================
-else:
-    st.title("ℹ️ Detalhes da PoC e Governança")
-    
-    tab1, tab2, tab3 = st.tabs(["O Problema", "Discussão de Riscos", "Equipe"])
-    
-    with tab1:
-        st.write("O gap identificado é o modelo de retenção reativo. Esta PoC prova que o uso de ML permite agir preventivamente.")
+        # Renderizando o gráfico no Streamlit
+        st.plotly_chart(fig, use_container_width=True)
         
-        
-    with tab2:
-        st.error("⚠️ Considerações Éticas e Regulatórias")
-        st.markdown("""
-        * **Auditabilidade:** Modelos de 'caixa-preta' (como Random Forest/SVM) podem dificultar licitações bancárias devido à baixa explicabilidade.
-        * **LGPD:** O tratamento de dados sensíveis (Gênero/País) deve ser anonimizado em produção para evitar viés algorítmico.
-        * **Risco de Viés:** O modelo pode penalizar certas nacionalidades se não for calibrado periodicamente.
-        """)
-        
-    with tab3:
-        st.write("**Integrantes do Grupo:**")
-        st.info("Débora | Fernanda Vaz | Gabriel Cardoso | Mayara Chew")
+        # Pequena caixa de insights dinâmicos
+        st.info(f"💡 **Dica de Avaliação:** Observe no gráfico acima como a proporção da classe majoritária afeta a distribuição de '{variavel_selecionada}'.")

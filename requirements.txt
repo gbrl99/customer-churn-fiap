@@ -1,7 +1,9 @@
-streamlit
 pandas
-plotly
+seaborn
+matplotlib
+kagglehub
+numpy
+pingouin
+scipy
 scikit-learn
 imbalanced-learn
-joblib
-seaborn

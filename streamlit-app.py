@@ -91,7 +91,7 @@ with col2:
     O processo atual de retenção sofre com lentidão e ineficiência devido a fatores como:
     * **Ações Reativas:** Tentativas de retenção ocorrem apenas quando o cliente já decidiu sair.
     * **Falta de Priorização:** Campanhas massivas disparam para toda a base, gerando grande desperdício de recursos.
-    * **Subjetividade:** Falta de uma estratégia unificada, deixando as decisões reféns do julgamento individual de cada agência.
+    * **Subjetividade:** Falta de uma estratégia unificada  , deixando as decisões reféns do julgamento individual de cada agência.
     """)
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -320,6 +320,143 @@ if not df.empty:
         st.error("A coluna alvo 'Exited' não foi encontrada no dataset.")
 
 
+# ---------------------------------------------------------
+    # SEÇÃO 3: PREDITOR DE CHURN INDIVIDUAL (SINGLE-ROW)
+    # ---------------------------------------------------------
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    st.divider()
+
+    st.markdown('<h2 class="section-title">Preditor de Churn Individual</h2>', unsafe_allow_html=True)
+    st.write("""
+    Simule o cenário de um cliente específico. Preencha as características abaixo e descubra a **probabilidade** de ele evadir do banco, 
+    utilizando um dos nossos modelos preditivos treinados com toda a base de dados.
+    """)
+
+    # Preparando as listas de opções baseadas no dataframe original (sem dummizar)
+    # Ignorando colunas irrelevantes e a variável alvo
+    colunas_ignoradas = ['RowNumber', 'CustomerId', 'Surname', 'Exited']
+    df_features = df.drop(columns=[col for col in colunas_ignoradas if col in df.columns], errors='ignore')
+
+    # Criando o layout do formulário em colunas para ficar organizado
+    col1, col2, col3 = st.columns(3)
+
+    # Dicionário para armazenar a entrada do usuário
+    input_cliente = {}
+
+    with col1:
+        st.markdown("**Dados Pessoais e Geográficos**")
+        input_cliente['Geography'] = st.selectbox("País (Geography):", df['Geography'].unique() if 'Geography' in df.columns else [])
+        input_cliente['Gender'] = st.selectbox("Gênero (Gender):", df['Gender'].unique() if 'Gender' in df.columns else [])
+        input_cliente['Age'] = st.number_input("Idade (Age):", min_value=18, max_value=100, value=35, step=1)
+        input_cliente['EstimatedSalary'] = st.number_input("Salário Estimado:", min_value=0.0, value=50000.0, step=1000.0)
+
+    with col2:
+        st.markdown("**Relacionamento com o Banco**")
+        input_cliente['CreditScore'] = st.number_input("Score de Crédito:", min_value=300, max_value=900, value=650, step=10)
+        input_cliente['Tenure'] = st.slider("Tempo de Banco (Anos):", min_value=0, max_value=20, value=5)
+        input_cliente['Balance'] = st.number_input("Saldo em Conta (Balance):", min_value=0.0, value=10000.0, step=1000.0)
+        input_cliente['NumOfProducts'] = st.number_input("Qtd de Produtos:", min_value=1, max_value=4, value=1, step=1)
+
+    with col3:
+        st.markdown("**Engajamento e Cartões**")
+        # Transformando opções binárias em algo visualmente mais amigável
+        input_cliente['HasCrCard'] = 1 if st.selectbox("Possui Cartão de Crédito?", ["Sim", "Não"]) == "Sim" else 0
+        input_cliente['IsActiveMember'] = 1 if st.selectbox("É Membro Ativo?", ["Sim", "Não"]) == "Sim" else 0
+        input_cliente['Complain'] = 1 if st.selectbox("Possui Reclamação?", ["Sim", "Não"]) == "Sim" else 0
+        
+        if 'Card Type' in df.columns:
+            input_cliente['Card Type'] = st.selectbox("Tipo de Cartão:", df['Card Type'].dropna().unique())
+        if 'Satisfaction Score' in df.columns:
+            input_cliente['Satisfaction Score'] = st.slider("Score de Satisfação:", min_value=1, max_value=5, value=3)
+        if 'Points Earned' in df.columns:
+            input_cliente['Points Earned'] = st.number_input("Pontos Acumulados:", min_value=0, value=500, step=50)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Seleção do Modelo para o Predict Individual
+    col_mod_single, col_btn_single = st.columns([2, 1])
+    
+    with col_mod_single:
+        modelo_single_escolhido = st.selectbox(
+            "Escolha o algoritmo para gerar a probabilidade deste cliente:",
+            ("Regressão Logística", "Random Forest", "AdaBoost", "SVM (SVC)")
+        )
+        
+    with col_btn_single:
+        st.markdown("<br>", unsafe_allow_html=True)
+        btn_predict_individual = st.button("🔍 Prever Risco do Cliente", type="primary", use_container_width=True)
+
+    # ---------------------------------------------------------
+    # LÓGICA DE PREDIÇÃO INDIVIDUAL (Acionada pelo botão)
+    # ---------------------------------------------------------
+    if btn_predict_individual:
+        with st.spinner("Analisando o perfil do cliente..."):
+            
+            # 1. Transformar o input do usuário em um DataFrame de 1 linha
+            df_input = pd.DataFrame([input_cliente])
+            
+            # 2. Preparar a base de treino completa (excluindo colunas irrelevantes)
+            df_train = df.drop(columns=[col for col in colunas_ignoradas if col in df.columns], errors='ignore')
+            y_train_full = df['Exited']
+            
+            # 3. Dummização combinada (Para garantir que a linha do cliente tenha as mesmas colunas do treino)
+            # Concatenamos temporariamente para o get_dummies criar as mesmas colunas e depois separamos
+            df_combined = pd.concat([df_train, df_input], ignore_index=True)
+            df_combined_dummies = pd.get_dummies(df_combined, drop_first=True)
+            
+            # Separando novamente
+            X_train_full = df_combined_dummies.iloc[:-1] # Tudo, exceto a última linha
+            X_single_client = df_combined_dummies.iloc[[-1]] # Apenas a última linha (o cliente)
+            
+            # 4. Standard Scaler
+            scaler_single = StandardScaler()
+            X_train_full_scaled = scaler_single.fit_transform(X_train_full)
+            X_single_client_scaled = scaler_single.transform(X_single_client)
+            
+            # 5. Instanciar e Treinar o modelo escolhido
+            if modelo_single_escolhido == "Regressão Logística":
+                modelo_single = LogisticRegression(C=0.1767016940294795, penalty='l2', solver='sag', class_weight='balanced', max_iter=2000, random_state=42)
+            elif modelo_single_escolhido == "Random Forest":
+                modelo_single = RandomForestClassifier(n_estimators=161, max_depth=75, max_features='sqrt', min_samples_split=41, min_samples_leaf=4, bootstrap=True, class_weight='balanced', random_state=42)
+            elif modelo_single_escolhido == "AdaBoost":
+                arvore_base = DecisionTreeClassifier(max_depth=1, class_weight='balanced', random_state=42)
+                try:
+                    modelo_single = AdaBoostClassifier(estimator=arvore_base, n_estimators=600, learning_rate=0.3, random_state=42)
+                except TypeError:
+                    modelo_single = AdaBoostClassifier(base_estimator=arvore_base, n_estimators=600, learning_rate=0.3, random_state=42)
+            elif modelo_single_escolhido == "SVM (SVC)":
+                # Nota: Para o SVM retornar probabilidade, probability=True é obrigatório
+                modelo_single = SVC(C=0.1767016940294795, kernel='rbf', gamma='scale', class_weight='balanced', probability=True, random_state=42)
+                
+            # Treinando o modelo com a base toda
+            modelo_single.fit(X_train_full_scaled, y_train_full)
+            
+            # 6. Realizar a Predição e extrair a Probabilidade
+            predicao_classe = modelo_single.predict(X_single_client_scaled)[0]
+            probabilidade = modelo_single.predict_proba(X_single_client_scaled)[0]
+            
+            prob_churn = probabilidade[1] * 100 # Probabilidade da classe 1 (Evadiu)
+            prob_ficar = probabilidade[0] * 100 # Probabilidade da classe 0 (Permaneceu)
+            
+            # 7. Exibição dos Resultados
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("### 📊 Resultado da Predição")
+            
+            col_res_A, col_res_B = st.columns(2)
+            
+            with col_res_A:
+                if predicao_classe == 1:
+                    st.error(f"🚨 **Alerta de Churn!** O modelo classificou que este cliente **irá evadir**.")
+                else:
+                    st.success(f"✅ **Cliente Retido.** O modelo classificou que este cliente **permanecerá** no banco.")
+                    
+            with col_res_B:
+                st.metric(label="Probabilidade de Churn (Sair)", value=f"{prob_churn:.2f}%")
+                
+            # Barra de progresso visual para a probabilidade
+            st.write("**Risco Relativo de Evasão:**")
+            st.progress(int(prob_churn))
+
 
 # --- MODELAGEM E PREDIÇÃO INTERATIVA ---
     st.markdown("### 🤖 Laboratório de Modelos de Machine Learning")
@@ -368,88 +505,88 @@ if not df.empty:
                 
             elif modelo_escolhido == "AdaBoost":
                 st.info("`n_estimators: 600` | `learning_rate: 0.3` | `class_weight: 'balanced' (via classificador base)`")
-                # AdaBoost não tem class_weight nativo, então passamos uma árvore base balanceada
                 arvore_base = DecisionTreeClassifier(max_depth=1, class_weight='balanced', random_state=42)
                 try:
                     modelo = AdaBoostClassifier(estimator=arvore_base, n_estimators=600, learning_rate=0.3, random_state=42)
                 except TypeError:
-                    # Fallback para versões mais antigas do scikit-learn
                     modelo = AdaBoostClassifier(base_estimator=arvore_base, n_estimators=600, learning_rate=0.3, random_state=42)
                     
             elif modelo_escolhido == "SVM (SVC)":
                 st.info("`C: 0.1767` | `kernel: 'rbf'` | `gamma: 'scale'` | `class_weight: 'balanced'`")
                 modelo = SVC(C=0.1767016940294795, kernel='rbf', gamma='scale', class_weight='balanced', random_state=42)
 
-        # 3. Treinamento e Avaliação
-        if variaveis_selecionadas:
-            with st.spinner(f"Treinando o modelo {modelo_escolhido}..."):
-                # Filtrando os dados
-                X_filtrado = X[variaveis_selecionadas]
-                
-                # Train/Test Split (80/20) com estratificação para manter a proporção da classe alvo
-                X_train, X_test, y_train, y_test = train_test_split(X_filtrado, y, test_size=0.20, random_state=42, stratify=y)
-                
-                # Standard Scaler
-                scaler = StandardScaler()
-                X_train_scaled = scaler.fit_transform(X_train)
-                X_test_scaled = scaler.transform(X_test)
-                
-                # Treinamento do Modelo
-                modelo.fit(X_train_scaled, y_train)
-                
-                # Previsões
-                y_pred = modelo.predict(X_test_scaled)
-                
-                st.markdown("<br>", unsafe_allow_html=True)
-                st.markdown("#### 3. Resultados e Métricas (Dados de Teste - 20%)")
-                
-                col_res1, col_res2 = st.columns(2)
-                
-                # Matriz de Confusão
-                with col_res1:
-                    st.write("**Matriz de Confusão**")
-                    cm = confusion_matrix(y_test, y_pred)
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # BOTÃO PREDICT
+        executar_modelo = st.button("🚀 Executar Previsão (Predict)", type="primary", use_container_width=True)
+
+        # 3. Treinamento e Avaliação (Só roda se o botão for clicado)
+        if executar_modelo:
+            if not variaveis_selecionadas:
+                st.warning("⚠️ Selecione pelo menos uma variável na etapa 1 para treinar o modelo.")
+            else:
+                with st.spinner(f"Treinando o modelo {modelo_escolhido} aguarde..."):
+                    # Filtrando os dados
+                    X_filtrado = X[variaveis_selecionadas]
                     
-                    # Usando Plotly para uma matriz bonita e com as cores da identidade
-                    fig_cm = px.imshow(
-                        cm, 
-                        text_auto=True, 
-                        color_continuous_scale=["#FFFFFF", "#005CA9", "#F39200"], 
-                        labels=dict(x="Previsão do Modelo", y="Realidade (Cliente)", color="Qtd"),
-                        x=['Permaneceu (0)', 'Evadiu (1)'],
-                        y=['Permaneceu (0)', 'Evadiu (1)']
-                    )
+                    # Train/Test Split (80/20) com estratificação
+                    X_train, X_test, y_train, y_test = train_test_split(X_filtrado, y, test_size=0.20, random_state=42, stratify=y)
                     
-                    fig_cm.update_layout(margin=dict(l=20, r=20, t=20, b=20), height=350)
-                    st.plotly_chart(fig_cm, use_container_width=True)
+                    # Standard Scaler
+                    scaler = StandardScaler()
+                    X_train_scaled = scaler.fit_transform(X_train)
+                    X_test_scaled = scaler.transform(X_test)
                     
-                    st.caption("Eixo X: O que o modelo previu | Eixo Y: O que realmente aconteceu")
-                
-                # Relatório de Classificação
-                with col_res2:
-                    st.write("**Métricas de Avaliação (Classification Report)**")
+                    # Treinamento do Modelo
+                    modelo.fit(X_train_scaled, y_train)
                     
-                    # Gerando o dicionário do classification report e convertendo para dataframe
-                    report = classification_report(y_test, y_pred, output_dict=True, target_names=['Permaneceu (0)', 'Evadiu (1)'])
-                    df_metrics = pd.DataFrame(report).transpose()
+                    # Previsões
+                    y_pred = modelo.predict(X_test_scaled)
                     
-                    # Removendo a acurácia global da tabela para focar no F1 das classes
-                    df_metrics = df_metrics.drop('accuracy', errors='ignore')
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    st.markdown("#### 3. Resultados e Métricas (Dados de Teste - 20%)")
                     
-                    # Formatando o DataFrame
-                    st.dataframe(
-                        df_metrics.style.format("{:.3f}").background_gradient(cmap='Blues'),
-                        use_container_width=True,
-                        height=280
-                    )
+                    col_res1, col_res2 = st.columns(2)
                     
-                    st.markdown("""
-                    **Interpretando as Métricas:**
-                    * **Precision (Precisão):** Dos que o modelo previu que dariam Churn, quantos realmente deram?
-                    * **Recall (Revocação):** De todos os clientes que *realmente* deram Churn, quantos o modelo conseguiu encontrar?
-                    * **F1-Score:** O equilíbrio entre Precisão e Recall. É a métrica principal para o nosso problema desbalanceado!
-                    """)
-        else:
-            st.warning("Selecione pelo menos uma variável para treinar o modelo.")
+                    # Matriz de Confusão
+                    with col_res1:
+                        st.write("**Matriz de Confusão**")
+                        cm = confusion_matrix(y_test, y_pred)
+                        
+                        fig_cm = px.imshow(
+                            cm, 
+                            text_auto=True, 
+                            color_continuous_scale=["#FFFFFF", "#005CA9", "#F39200"], 
+                            labels=dict(x="Previsão do Modelo", y="Realidade (Cliente)", color="Qtd"),
+                            x=['Permaneceu (0)', 'Evadiu (1)'],
+                            y=['Permaneceu (0)', 'Evadiu (1)']
+                        )
+                        
+                        fig_cm.update_layout(margin=dict(l=20, r=20, t=20, b=20), height=350)
+                        st.plotly_chart(fig_cm, use_container_width=True)
+                        
+                        st.caption("Eixo X: O que o modelo previu | Eixo Y: O que realmente aconteceu")
+                    
+                    # Relatório de Classificação
+                    with col_res2:
+                        st.write("**Métricas de Avaliação (Classification Report)**")
+                        
+                        report = classification_report(y_test, y_pred, output_dict=True, target_names=['Permaneceu (0)', 'Evadiu (1)'])
+                        df_metrics = pd.DataFrame(report).transpose()
+                        
+                        df_metrics = df_metrics.drop('accuracy', errors='ignore')
+                        
+                        st.dataframe(
+                            df_metrics.style.format("{:.3f}").background_gradient(cmap='Blues'),
+                            use_container_width=True,
+                            height=280
+                        )
+                        
+                        st.markdown("""
+                        **Interpretando as Métricas:**
+                        * **Precision (Precisão):** Dos que o modelo previu que dariam Churn, quantos realmente deram?
+                        * **Recall (Revocação):** De todos os clientes que *realmente* deram Churn, quantos o modelo conseguiu encontrar?
+                        * **F1-Score:** O equilíbrio entre Precisão e Recall. É a métrica principal para o nosso problema desbalanceado!
+                        """)
     else:
         st.error("A coluna alvo 'Exited' não foi encontrada no dataset.")

@@ -7,3 +7,5 @@ pingouin
 scipy
 scikit-learn
 imbalanced-learn
+plotly
+streamlit
